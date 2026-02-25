@@ -13,7 +13,7 @@ GUILD_ID = os.getenv("GUILD_ID")
 ROLE_ID = os.getenv("ROLE_ID")
 BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 
-AUTHORIZED_USERS = set()
+AUTHORIZED = False
 
 @app.get("/")
 def home():
@@ -32,6 +32,7 @@ def login():
 
 @app.get("/callback")
 def callback(code: str = ""):
+    global AUTHORIZED
 
     token_res = requests.post(
         "https://discord.com/api/oauth2/token",
@@ -67,31 +68,24 @@ def callback(code: str = ""):
     if ROLE_ID not in roles:
         return HTMLResponse("<h2 style='color:red'>MISSING ROLE</h2>")
 
-    AUTHORIZED_USERS.add(user_id)
+    AUTHORIZED = True
 
     return HTMLResponse("""
     <html>
-    <head>
-    <style>
-    body { background:#0f0f0f; color:white; font-family:Arial; text-align:center; padding-top:100px;}
-    .box {background:#1a1a1a;padding:40px;border-radius:12px;display:inline-block;box-shadow:0 0 25px #00ff88;}
-    .ok {color:#00ff88;font-size:20px;}
-    </style>
-    </head>
-    <body>
-    <div class="box">
-    <h1>LIVESEA AUTH SUCCESS</h1>
-    <div class="ok">ROLE DISCORD : OK</div>
-    <div class="ok">SERVEUR DISCORD : OK</div>
-    <div class="ok">ACCES : OK</div>
-    </div>
+    <body style="background:#0f0f0f;color:white;text-align:center;padding-top:100px;font-family:Arial;">
+        <h1 style="color:#00ff88;">LIVESEA AUTH SUCCESS</h1>
+        <p>ROLE DISCORD : OK</p>
+        <p>SERVEUR DISCORD : OK</p>
+        <p>ACCES : OK</p>
+        <p>Vous pouvez retourner sur LiveSea.</p>
     </body>
     </html>
     """)
 
 @app.get("/check")
 def check():
-    if len(AUTHORIZED_USERS) > 0:
-        AUTHORIZED_USERS.clear()
+    global AUTHORIZED
+    if AUTHORIZED:
+        AUTHORIZED = False
         return {"authorized": True}
     return {"authorized": False}
