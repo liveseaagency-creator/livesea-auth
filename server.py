@@ -1,6 +1,6 @@
 import os
 import requests
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.responses import RedirectResponse, HTMLResponse, JSONResponse
 
 app = FastAPI()
@@ -13,7 +13,7 @@ GUILD_ID = os.getenv("GUILD_ID")
 ROLE_ID = os.getenv("ROLE_ID")
 BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 
-COOKIE_NAME = "livesea_auth"
+AUTHORIZED = False
 
 
 @app.get("/")
@@ -35,11 +35,11 @@ def login():
 
 @app.get("/callback")
 def callback(code: str = ""):
+    global AUTHORIZED
 
     if not code:
         return HTMLResponse("<h2 style='color:red'>Code OAuth manquant</h2>")
 
-    # === ÉCHANGE CODE → TOKEN ===
     token_res = requests.post(
         "https://discord.com/api/oauth2/token",
         data={
@@ -60,7 +60,6 @@ def callback(code: str = ""):
     if not access_token:
         return HTMLResponse("<h2 style='color:red'>Token invalide</h2>")
 
-    # === RÉCUP USER ===
     user_res = requests.get(
         "https://discord.com/api/users/@me",
         headers={"Authorization": f"Bearer {access_token}"},
@@ -71,7 +70,6 @@ def callback(code: str = ""):
 
     user_id = user_res.json().get("id")
 
-    # === CHECK SERVER + ROLE ===
     member_res = requests.get(
         f"https://discord.com/api/guilds/{GUILD_ID}/members/{user_id}",
         headers={"Authorization": f"Bot {BOT_TOKEN}"}
@@ -82,7 +80,8 @@ def callback(code: str = ""):
     role_ok = ROLE_ID in roles
     access_ok = server_ok and role_ok
 
-    # === HTML DYNAMIQUE ===
+    AUTHORIZED = access_ok
+
     html_content = f"""
     <!DOCTYPE html>
     <html lang="fr">
@@ -202,25 +201,9 @@ def callback(code: str = ""):
     </html>
     """
 
-    response = HTMLResponse(html_content)
-
-    # === COOKIE SÉCURISÉ SI OK ===
-    if access_ok:
-        response.set_cookie(
-            key=COOKIE_NAME,
-            value="true",
-            httponly=True,
-            secure=True,
-            samesite="lax",
-            max_age=300  # 5 minutes
-        )
-
-    return response
+    return HTMLResponse(html_content)
 
 
 @app.get("/check")
-def check(request: Request):
-    cookie = request.cookies.get(COOKIE_NAME)
-    if cookie == "true":
-        return {"authorized": True}
-    return {"authorized": False}
+def check():
+    return JSONResponse({"authorized": AUTHORIZED})
