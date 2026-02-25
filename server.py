@@ -1,6 +1,6 @@
 import os
 import requests
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse, HTMLResponse, JSONResponse
 
 app = FastAPI()
@@ -13,11 +13,13 @@ GUILD_ID = os.getenv("GUILD_ID")
 ROLE_ID = os.getenv("ROLE_ID")
 BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 
-AUTHORIZED = False
+COOKIE_NAME = "livesea_auth"
+
 
 @app.get("/")
 def home():
     return {"status": "LiveSea Auth Online"}
+
 
 @app.get("/login")
 def login():
@@ -30,10 +32,14 @@ def login():
     )
     return RedirectResponse(url)
 
+
 @app.get("/callback")
 def callback(code: str = ""):
-    global AUTHORIZED
 
+    if not code:
+        return HTMLResponse("<h2 style='color:red'>Code OAuth manquant</h2>")
+
+    # === ÉCHANGE CODE → TOKEN ===
     token_res = requests.post(
         "https://discord.com/api/oauth2/token",
         data={
@@ -46,46 +52,175 @@ def callback(code: str = ""):
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
 
+    if token_res.status_code != 200:
+        return HTMLResponse("<h2 style='color:red'>Erreur OAuth Discord</h2>")
+
     access_token = token_res.json().get("access_token")
 
+    if not access_token:
+        return HTMLResponse("<h2 style='color:red'>Token invalide</h2>")
+
+    # === RÉCUP USER ===
     user_res = requests.get(
         "https://discord.com/api/users/@me",
         headers={"Authorization": f"Bearer {access_token}"},
     )
 
+    if user_res.status_code != 200:
+        return HTMLResponse("<h2 style='color:red'>Impossible de récupérer l'utilisateur</h2>")
+
     user_id = user_res.json().get("id")
 
+    # === CHECK SERVER + ROLE ===
     member_res = requests.get(
         f"https://discord.com/api/guilds/{GUILD_ID}/members/{user_id}",
         headers={"Authorization": f"Bot {BOT_TOKEN}"}
     )
 
-    if member_res.status_code != 200:
-        return HTMLResponse("<h2 style='color:red'>NOT IN DISCORD SERVER</h2>")
+    server_ok = member_res.status_code == 200
+    roles = member_res.json().get("roles", []) if server_ok else []
+    role_ok = ROLE_ID in roles
+    access_ok = server_ok and role_ok
 
-    roles = member_res.json().get("roles", [])
+    # === HTML DYNAMIQUE ===
+    html_content = f"""
+    <!DOCTYPE html>
+    <html lang="fr">
+    <head>
+    <meta charset="UTF-8">
+    <title>LiveSea Auth</title>
+    <style>
+        body {{
+            margin: 0;
+            background: linear-gradient(135deg, #0f0f0f, #1c1c1c);
+            font-family: 'Segoe UI', sans-serif;
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }}
 
-    if ROLE_ID not in roles:
-        return HTMLResponse("<h2 style='color:red'>MISSING ROLE</h2>")
+        .card {{
+            background: #181818;
+            padding: 50px;
+            border-radius: 20px;
+            width: 520px;
+            box-shadow: 0 0 40px rgba(0,255,150,0.2);
+            text-align: center;
+            animation: fadeIn 0.5s ease-in-out;
+        }}
 
-    AUTHORIZED = True
+        @keyframes fadeIn {{
+            from {{ opacity: 0; transform: translateY(20px); }}
+            to {{ opacity: 1; transform: translateY(0); }}
+        }}
 
-    return HTMLResponse("""
-    <html>
-    <body style="background:#0f0f0f;color:white;text-align:center;padding-top:100px;font-family:Arial;">
-        <h1 style="color:#00ff88;">LIVESEA AUTH SUCCESS</h1>
-        <p>ROLE DISCORD : OK</p>
-        <p>SERVEUR DISCORD : OK</p>
-        <p>ACCES : OK</p>
-        <p>Vous pouvez retourner sur LiveSea.</p>
+        h1 {{
+            margin-bottom: 35px;
+            font-size: 26px;
+            color: {'#00ff88' if access_ok else '#ff3b3b'};
+        }}
+
+        .status {{
+            display: flex;
+            justify-content: space-between;
+            margin: 12px 0;
+            padding: 14px 20px;
+            background: #111;
+            border-radius: 10px;
+            font-size: 15px;
+        }}
+
+        .ok {{
+            color: #00ff88;
+            font-weight: bold;
+        }}
+
+        .fail {{
+            color: #ff3b3b;
+            font-weight: bold;
+        }}
+
+        .footer {{
+            margin-top: 30px;
+            font-size: 14px;
+            opacity: 0.7;
+        }}
+
+        .btn {{
+            margin-top: 25px;
+            display: inline-block;
+            padding: 12px 30px;
+            border-radius: 30px;
+            background: #00ff88;
+            color: black;
+            text-decoration: none;
+            font-weight: bold;
+            transition: 0.3s;
+        }}
+
+        .btn:hover {{
+            background: #00cc6a;
+        }}
+    </style>
+    </head>
+    <body>
+    <div class="card">
+
+        <h1>{'ACCÈS AUTORISÉ' if access_ok else 'ACCÈS REFUSÉ'}</h1>
+
+        <div class="status">
+            <span>Présence sur le serveur Discord</span>
+            <span class="{ 'ok' if server_ok else 'fail' }">
+                { '✔ OUI' if server_ok else '✖ NON' }
+            </span>
+        </div>
+
+        <div class="status">
+            <span>Rôle requis attribué</span>
+            <span class="{ 'ok' if role_ok else 'fail' }">
+                { '✔ OUI' if role_ok else '✖ NON' }
+            </span>
+        </div>
+
+        <div class="status">
+            <span>Accès à LiveSea</span>
+            <span class="{ 'ok' if access_ok else 'fail' }">
+                { '✔ AUTORISÉ' if access_ok else '✖ REFUSÉ' }
+            </span>
+        </div>
+
+        <div class="footer">
+            {"Vous pouvez retourner sur Plutonium." if access_ok else "Rejoignez le serveur et obtenez le rôle requis."}
+        </div>
+
+        {"<a href='/' class='btn'>Retour</a>" if access_ok else ""}
+
+    </div>
     </body>
     </html>
-    """)
+    """
+
+    response = HTMLResponse(html_content)
+
+    # === COOKIE SÉCURISÉ SI OK ===
+    if access_ok:
+        response.set_cookie(
+            key=COOKIE_NAME,
+            value="true",
+            httponly=True,
+            secure=True,
+            samesite="lax",
+            max_age=300  # 5 minutes
+        )
+
+    return response
+
 
 @app.get("/check")
-def check():
-    global AUTHORIZED
-    if AUTHORIZED:
-        AUTHORIZED = False
+def check(request: Request):
+    cookie = request.cookies.get(COOKIE_NAME)
+    if cookie == "true":
         return {"authorized": True}
     return {"authorized": False}
