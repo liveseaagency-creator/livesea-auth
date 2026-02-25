@@ -2,41 +2,52 @@ import os
 import secrets
 import requests
 from fastapi import FastAPI
-from fastapi.responses import RedirectResponse, HTMLResponse
+from fastapi.responses import RedirectResponse, JSONResponse
 
 app = FastAPI()
 
+# ===== ENV VARIABLES =====
 CLIENT_ID = os.getenv("DISCORD_CLIENT_ID", "")
 CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET", "")
 REDIRECT_URI = os.getenv("DISCORD_REDIRECT_URI", "")
 
 GUILD_ID = os.getenv("GUILD_ID", "")
 ROLE_ID = os.getenv("ROLE_ID", "")
+BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN", "")
 
+# Stockage temporaire des tokens (mémoire RAM)
+TOKENS = {}
+
+# ===== HOME =====
 @app.get("/")
 def home():
     return {"status": "LiveSea Auth Server Online"}
 
+# ===== LOGIN =====
 @app.get("/login")
 def login():
     if not CLIENT_ID or not REDIRECT_URI:
-        return {"error": "Missing OAuth configuration"}
+        return JSONResponse({"error": "OAuth configuration missing"}, status_code=500)
 
     url = (
         "https://discord.com/api/oauth2/authorize"
         f"?client_id={CLIENT_ID}"
         f"&redirect_uri={REDIRECT_URI}"
         "&response_type=code"
-        "&scope=identify%20guilds%20guilds.members.read"
+        "&scope=identify"
         "&prompt=consent"
     )
+
     return RedirectResponse(url)
 
+# ===== CALLBACK =====
 @app.get("/callback")
 def callback(code: str = ""):
-    if not code:
-        return {"error": "Missing code"}
 
+    if not code:
+        return JSONResponse({"error": "Missing code"}, status_code=400)
+
+    # Exchange code → access_token
     token_res = requests.post(
         "https://discord.com/api/oauth2/token",
         data={
@@ -53,8 +64,12 @@ def callback(code: str = ""):
     access_token = token_json.get("access_token")
 
     if not access_token:
-        return {"error": "Token exchange failed", "detail": token_json}
+        return JSONResponse(
+            {"error": "Token exchange failed", "detail": token_json},
+            status_code=400
+        )
 
+    # Get user info
     user_res = requests.get(
         "https://discord.com/api/users/@me",
         headers={"Authorization": f"Bearer {access_token}"},
@@ -63,23 +78,33 @@ def callback(code: str = ""):
     user = user_res.json()
     user_id = user.get("id")
 
+    if not user_id:
+        return JSONResponse({"error": "User fetch failed"}, status_code=400)
+
+    # ===== Vérification Guild + Role via BOT TOKEN =====
     member_res = requests.get(
-        f"https://discord.com/api/users/@me/guilds/{GUILD_ID}/member",
-        headers={"Authorization": f"Bearer {access_token}"},
+        f"https://discord.com/api/guilds/{GUILD_ID}/members/{user_id}",
+        headers={"Authorization": f"Bot {BOT_TOKEN}"}
     )
 
     if member_res.status_code != 200:
-        return {"status": "DENIED", "reason": "Not in guild"}
+        return JSONResponse(
+            {"status": "DENIED", "reason": "Not in guild"},
+            status_code=403
+        )
 
     member = member_res.json()
+    roles = member.get("roles", [])
 
-    if ROLE_ID not in member.get("roles", []):
-        return {"status": "DENIED", "reason": "Missing role"}
+    if ROLE_ID not in roles:
+        return JSONResponse(
+            {"status": "DENIED", "reason": "Missing role"},
+            status_code=403
+        )
 
-    session_token = secrets.token_urlsafe(24)
+    # ===== Génération token sécurisé =====
+    secure_token = secrets.token_urlsafe(32)
+    TOKENS[secure_token] = user_id
 
-    return {
-        "status": "AUTHORIZED",
-        "discord_id": user_id,
-        "token": session_token
-    }
+    # ===== Redirection invisible vers launcher =====
+    return RedirectResponse(f"livesea://auth?token={secure_token}")
