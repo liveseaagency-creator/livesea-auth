@@ -114,6 +114,11 @@ def callback(code: str = ""):
             animation: fadeIn 0.5s ease-in-out;
         }}
 
+        @keyframes fadeIn {{
+            from {{ opacity: 0; transform: translateY(20px); }}
+            to {{ opacity: 1; transform: translateY(0); }}
+        }}
+
         h1 {{
             margin-bottom: 35px;
             font-size: 26px;
@@ -145,14 +150,56 @@ def callback(code: str = ""):
             font-size: 14px;
             opacity: 0.7;
         }}
+
+        .btn {{
+            margin-top: 25px;
+            display: inline-block;
+            padding: 12px 30px;
+            border-radius: 30px;
+            background: #00ff88;
+            color: black;
+            text-decoration: none;
+            font-weight: bold;
+            transition: 0.3s;
+        }}
+
+        .btn:hover {{
+            background: #00cc6a;
+        }}
     </style>
     </head>
     <body>
     <div class="card">
+
         <h1>{'ACCÈS AUTORISÉ' if access_ok else 'ACCÈS REFUSÉ'}</h1>
+
+        <div class="status">
+            <span>Présence sur le serveur Discord</span>
+            <span class="{ 'ok' if server_ok else 'fail' }">
+                { '✔ OUI' if server_ok else '✖ NON' }
+            </span>
+        </div>
+
+        <div class="status">
+            <span>Rôle requis attribué</span>
+            <span class="{ 'ok' if role_ok else 'fail' }">
+                { '✔ OUI' if role_ok else '✖ NON' }
+            </span>
+        </div>
+
+        <div class="status">
+            <span>Accès à LiveSea</span>
+            <span class="{ 'ok' if access_ok else 'fail' }">
+                { '✔ AUTORISÉ' if access_ok else '✖ REFUSÉ' }
+            </span>
+        </div>
+
         <div class="footer">
             {"Vous pouvez retourner sur Plutonium." if access_ok else "Rejoignez le serveur et obtenez le rôle requis."}
         </div>
+
+        {"<a href='/' class='btn'>Retour</a>" if access_ok else ""}
+
     </div>
     </body>
     </html>
