@@ -1,4 +1,5 @@
 import os
+import time
 import requests
 from fastapi import FastAPI
 from fastapi.responses import RedirectResponse, HTMLResponse, JSONResponse
@@ -13,7 +14,7 @@ GUILD_ID = os.getenv("GUILD_ID")
 ROLE_ID = os.getenv("ROLE_ID")
 BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 
-AUTHORIZED = False
+AUTHORIZED_UNTIL = 0
 
 
 @app.get("/")
@@ -35,7 +36,7 @@ def login():
 
 @app.get("/callback")
 def callback(code: str = ""):
-    global AUTHORIZED
+    global AUTHORIZED_UNTIL
 
     if not code:
         return HTMLResponse("<h2 style='color:red'>Code OAuth manquant</h2>")
@@ -80,7 +81,10 @@ def callback(code: str = ""):
     role_ok = ROLE_ID in roles
     access_ok = server_ok and role_ok
 
-    AUTHORIZED = access_ok
+    if access_ok:
+        AUTHORIZED_UNTIL = time.time() + 30
+    else:
+        AUTHORIZED_UNTIL = 0
 
     html_content = f"""
     <!DOCTYPE html>
@@ -108,11 +112,6 @@ def callback(code: str = ""):
             box-shadow: 0 0 40px rgba(0,255,150,0.2);
             text-align: center;
             animation: fadeIn 0.5s ease-in-out;
-        }}
-
-        @keyframes fadeIn {{
-            from {{ opacity: 0; transform: translateY(20px); }}
-            to {{ opacity: 1; transform: translateY(0); }}
         }}
 
         h1 {{
@@ -146,56 +145,14 @@ def callback(code: str = ""):
             font-size: 14px;
             opacity: 0.7;
         }}
-
-        .btn {{
-            margin-top: 25px;
-            display: inline-block;
-            padding: 12px 30px;
-            border-radius: 30px;
-            background: #00ff88;
-            color: black;
-            text-decoration: none;
-            font-weight: bold;
-            transition: 0.3s;
-        }}
-
-        .btn:hover {{
-            background: #00cc6a;
-        }}
     </style>
     </head>
     <body>
     <div class="card">
-
         <h1>{'ACCÈS AUTORISÉ' if access_ok else 'ACCÈS REFUSÉ'}</h1>
-
-        <div class="status">
-            <span>Présence sur le serveur Discord</span>
-            <span class="{ 'ok' if server_ok else 'fail' }">
-                { '✔ OUI' if server_ok else '✖ NON' }
-            </span>
-        </div>
-
-        <div class="status">
-            <span>Rôle requis attribué</span>
-            <span class="{ 'ok' if role_ok else 'fail' }">
-                { '✔ OUI' if role_ok else '✖ NON' }
-            </span>
-        </div>
-
-        <div class="status">
-            <span>Accès à LiveSea</span>
-            <span class="{ 'ok' if access_ok else 'fail' }">
-                { '✔ AUTORISÉ' if access_ok else '✖ REFUSÉ' }
-            </span>
-        </div>
-
         <div class="footer">
             {"Vous pouvez retourner sur Plutonium." if access_ok else "Rejoignez le serveur et obtenez le rôle requis."}
         </div>
-
-        {"<a href='/' class='btn'>Retour</a>" if access_ok else ""}
-
     </div>
     </body>
     </html>
@@ -206,4 +163,10 @@ def callback(code: str = ""):
 
 @app.get("/check")
 def check():
-    return JSONResponse({"authorized": AUTHORIZED})
+    global AUTHORIZED_UNTIL
+
+    if time.time() < AUTHORIZED_UNTIL:
+        AUTHORIZED_UNTIL = 0
+        return JSONResponse({"authorized": True})
+
+    return JSONResponse({"authorized": False})
