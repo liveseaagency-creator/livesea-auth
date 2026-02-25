@@ -18,6 +18,11 @@ BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN", "")
 # Stockage temporaire des tokens (mémoire RAM)
 TOKENS = {}
 
+from fastapi.responses import PlainTextResponse
+
+@app.get("/ping")
+def ping():
+    return PlainTextResponse("pong")
 # ===== HOME =====
 @app.get("/")
 def home():
