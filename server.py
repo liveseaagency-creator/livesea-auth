@@ -1,7 +1,5 @@
 import os
-import secrets
 import requests
-import time
 from fastapi import FastAPI
 from fastapi.responses import RedirectResponse, HTMLResponse, JSONResponse
 
@@ -15,7 +13,7 @@ GUILD_ID = os.getenv("GUILD_ID")
 ROLE_ID = os.getenv("ROLE_ID")
 BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 
-TOKENS = {}
+AUTHORIZED_USERS = set()
 
 @app.get("/")
 def home():
@@ -62,70 +60,38 @@ def callback(code: str = ""):
     )
 
     if member_res.status_code != 200:
-        return HTMLResponse("<h2 style='color:red'>Not in Discord server</h2>")
+        return HTMLResponse("<h2 style='color:red'>NOT IN DISCORD SERVER</h2>")
 
     roles = member_res.json().get("roles", [])
 
     if ROLE_ID not in roles:
-        return HTMLResponse("<h2 style='color:red'>Missing required role</h2>")
+        return HTMLResponse("<h2 style='color:red'>MISSING ROLE</h2>")
 
-    secure_token = secrets.token_urlsafe(32)
+    AUTHORIZED_USERS.add(user_id)
 
-    TOKENS[secure_token] = {
-        "user_id": user_id,
-        "expires": time.time() + 300
-    }
-
-    html = f"""
+    return HTMLResponse("""
     <html>
     <head>
-        <title>LiveSea Access</title>
-        <style>
-            body {{
-                background:#0f0f0f;
-                color:white;
-                font-family:Arial;
-                text-align:center;
-                padding-top:100px;
-            }}
-            .box {{
-                background:#1a1a1a;
-                padding:40px;
-                border-radius:12px;
-                display:inline-block;
-                box-shadow:0 0 30px #00ff88;
-            }}
-            .ok {{ color:#00ff88; font-size:20px; }}
-        </style>
-        <script>
-            setTimeout(function(){{
-                window.location.href="http://127.0.0.1:5173/?token={secure_token}";
-            }},1500);
-        </script>
+    <style>
+    body { background:#0f0f0f; color:white; font-family:Arial; text-align:center; padding-top:100px;}
+    .box {background:#1a1a1a;padding:40px;border-radius:12px;display:inline-block;box-shadow:0 0 25px #00ff88;}
+    .ok {color:#00ff88;font-size:20px;}
+    </style>
     </head>
     <body>
-        <div class="box">
-            <h1>LIVESEA AUTH SUCCESS</h1>
-            <div class="ok">ROLE DISCORD : OK</div>
-            <div class="ok">SERVEUR DISCORD : OK</div>
-            <div class="ok">ACCES : OK</div>
-        </div>
+    <div class="box">
+    <h1>LIVESEA AUTH SUCCESS</h1>
+    <div class="ok">ROLE DISCORD : OK</div>
+    <div class="ok">SERVEUR DISCORD : OK</div>
+    <div class="ok">ACCES : OK</div>
+    </div>
     </body>
     </html>
-    """
+    """)
 
-    return HTMLResponse(content=html)
-
-@app.get("/verify")
-def verify(token: str = ""):
-    data = TOKENS.get(token)
-
-    if not data:
-        return JSONResponse({"valid": False}, status_code=403)
-
-    if time.time() > data["expires"]:
-        TOKENS.pop(token, None)
-        return JSONResponse({"valid": False}, status_code=403)
-
-    TOKENS.pop(token, None)
-    return {"valid": True}
+@app.get("/check")
+def check():
+    if len(AUTHORIZED_USERS) > 0:
+        AUTHORIZED_USERS.clear()
+        return {"authorized": True}
+    return {"authorized": False}
