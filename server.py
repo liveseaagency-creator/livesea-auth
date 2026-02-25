@@ -3,7 +3,7 @@ import secrets
 import requests
 import time
 from fastapi import FastAPI
-from fastapi.responses import RedirectResponse, JSONResponse
+from fastapi.responses import RedirectResponse, HTMLResponse, JSONResponse
 
 app = FastAPI()
 
@@ -62,12 +62,12 @@ def callback(code: str = ""):
     )
 
     if member_res.status_code != 200:
-        return JSONResponse({"error": "Not in guild"}, status_code=403)
+        return HTMLResponse("<h2 style='color:red'>Not in Discord server</h2>")
 
     roles = member_res.json().get("roles", [])
 
     if ROLE_ID not in roles:
-        return JSONResponse({"error": "Missing role"}, status_code=403)
+        return HTMLResponse("<h2 style='color:red'>Missing required role</h2>")
 
     secure_token = secrets.token_urlsafe(32)
 
@@ -76,7 +76,45 @@ def callback(code: str = ""):
         "expires": time.time() + 300
     }
 
-    return RedirectResponse(f"http://127.0.0.1:5173/?token={secure_token}")
+    html = f"""
+    <html>
+    <head>
+        <title>LiveSea Access</title>
+        <style>
+            body {{
+                background:#0f0f0f;
+                color:white;
+                font-family:Arial;
+                text-align:center;
+                padding-top:100px;
+            }}
+            .box {{
+                background:#1a1a1a;
+                padding:40px;
+                border-radius:12px;
+                display:inline-block;
+                box-shadow:0 0 30px #00ff88;
+            }}
+            .ok {{ color:#00ff88; font-size:20px; }}
+        </style>
+        <script>
+            setTimeout(function(){{
+                window.location.href="http://127.0.0.1:5173/?token={secure_token}";
+            }},1500);
+        </script>
+    </head>
+    <body>
+        <div class="box">
+            <h1>LIVESEA AUTH SUCCESS</h1>
+            <div class="ok">ROLE DISCORD : OK</div>
+            <div class="ok">SERVEUR DISCORD : OK</div>
+            <div class="ok">ACCES : OK</div>
+        </div>
+    </body>
+    </html>
+    """
+
+    return HTMLResponse(content=html)
 
 @app.get("/verify")
 def verify(token: str = ""):
@@ -90,5 +128,4 @@ def verify(token: str = ""):
         return JSONResponse({"valid": False}, status_code=403)
 
     TOKENS.pop(token, None)
-
     return {"valid": True}
