@@ -7,19 +7,19 @@ from fastapi.responses import RedirectResponse, JSONResponse
 
 app = FastAPI()
 
-CLIENT_ID = os.getenv("DISCORD_CLIENT_ID", "")
-CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET", "")
-REDIRECT_URI = os.getenv("DISCORD_REDIRECT_URI", "")
+CLIENT_ID = os.getenv("DISCORD_CLIENT_ID")
+CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
+REDIRECT_URI = os.getenv("DISCORD_REDIRECT_URI")
 
-GUILD_ID = os.getenv("GUILD_ID", "")
-ROLE_ID = os.getenv("ROLE_ID", "")
-BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN", "")
+GUILD_ID = os.getenv("GUILD_ID")
+ROLE_ID = os.getenv("ROLE_ID")
+BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 
 TOKENS = {}
 
 @app.get("/")
 def home():
-    return {"status": "LiveSea Auth Server Online"}
+    return {"status": "LiveSea Auth Online"}
 
 @app.get("/login")
 def login():
@@ -29,15 +29,11 @@ def login():
         f"&redirect_uri={REDIRECT_URI}"
         "&response_type=code"
         "&scope=identify"
-        "&prompt=consent"
     )
     return RedirectResponse(url)
 
 @app.get("/callback")
 def callback(code: str = ""):
-
-    if not code:
-        return JSONResponse({"error": "Missing code"}, status_code=400)
 
     token_res = requests.post(
         "https://discord.com/api/oauth2/token",
@@ -51,22 +47,14 @@ def callback(code: str = ""):
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
 
-    token_json = token_res.json()
-    access_token = token_json.get("access_token")
-
-    if not access_token:
-        return JSONResponse({"error": "Token exchange failed"}, status_code=400)
+    access_token = token_res.json().get("access_token")
 
     user_res = requests.get(
         "https://discord.com/api/users/@me",
         headers={"Authorization": f"Bearer {access_token}"},
     )
 
-    user = user_res.json()
-    user_id = user.get("id")
-
-    if not user_id:
-        return JSONResponse({"error": "User fetch failed"}, status_code=400)
+    user_id = user_res.json().get("id")
 
     member_res = requests.get(
         f"https://discord.com/api/guilds/{GUILD_ID}/members/{user_id}",
@@ -74,13 +62,12 @@ def callback(code: str = ""):
     )
 
     if member_res.status_code != 200:
-        return JSONResponse({"status": "DENIED", "reason": "Not in guild"}, status_code=403)
+        return JSONResponse({"error": "Not in guild"}, status_code=403)
 
-    member = member_res.json()
-    roles = member.get("roles", [])
+    roles = member_res.json().get("roles", [])
 
     if ROLE_ID not in roles:
-        return JSONResponse({"status": "DENIED", "reason": "Missing role"}, status_code=403)
+        return JSONResponse({"error": "Missing role"}, status_code=403)
 
     secure_token = secrets.token_urlsafe(32)
 
@@ -89,7 +76,7 @@ def callback(code: str = ""):
         "expires": time.time() + 300
     }
 
-    return JSONResponse({"status": "OK", "token": secure_token})
+    return RedirectResponse(f"http://127.0.0.1:5173/?token={secure_token}")
 
 @app.get("/verify")
 def verify(token: str = ""):
@@ -100,7 +87,7 @@ def verify(token: str = ""):
 
     if time.time() > data["expires"]:
         TOKENS.pop(token, None)
-        return JSONResponse({"valid": False, "expired": True}, status_code=403)
+        return JSONResponse({"valid": False}, status_code=403)
 
     TOKENS.pop(token, None)
 
